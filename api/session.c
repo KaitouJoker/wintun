@@ -221,6 +221,36 @@ BYTE *WINAPI
 WintunReceivePacketFast(TUN_SESSION *Session, DWORD *PacketSize, DWORD SpinCycles)
 {
     DWORD LastError;
+    if (SpinCycles > 0)
+    {
+        ULONG InitialTail = ReadULongAcquire(&Session->Descriptor.Send.Ring->Tail);
+        if (InitialTail >= Session->Capacity)
+        {
+            SetLastError(ERROR_HANDLE_EOF);
+            return NULL;
+        }
+        /* Spin outside critical section to prevent blocking concurrent packet releases */
+        ULONG InitialHead = ReadULongAcquire(&Session->Descriptor.Send.Ring->Head);
+        if (InitialHead == InitialTail)
+        {
+            for (DWORD i = 0; i < SpinCycles; i++)
+            {
+                _mm_pause();
+                InitialTail = ReadULongAcquire(&Session->Descriptor.Send.Ring->Tail);
+                if (InitialHead != InitialTail)
+                {
+                    InterlockedIncrement64((LONG64 *)&Session->Stats.SpinHits);
+                    break;
+                }
+            }
+            if (InitialHead == InitialTail)
+            {
+                SetLastError(ERROR_NO_MORE_ITEMS);
+                return NULL;
+            }
+        }
+    }
+
     EnterCriticalSection(&Session->Send.Lock);
 restartRx:
     if (Session->Send.Head >= Session->Capacity)
@@ -233,19 +263,6 @@ restartRx:
     {
         LastError = ERROR_HANDLE_EOF;
         goto cleanup;
-    }
-    if (Session->Send.Head == BuffTail && SpinCycles > 0)
-    {
-        for (DWORD i = 0; i < SpinCycles; i++)
-        {
-            _mm_pause();
-            BuffTail = ReadULongAcquire(&Session->Descriptor.Send.Ring->Tail);
-            if (Session->Send.Head != BuffTail)
-            {
-                InterlockedIncrement64((LONG64 *)&Session->Stats.SpinHits);
-                break;
-            }
-        }
     }
     if (Session->Send.Head == BuffTail)
     {

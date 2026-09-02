@@ -221,6 +221,7 @@ WintunReceivePacketFast(TUN_SESSION *Session, DWORD *PacketSize, DWORD SpinCycle
 {
     DWORD LastError;
     EnterCriticalSection(&Session->Send.Lock);
+restartRx:
     if (Session->Send.Head >= Session->Capacity)
     {
         LastError = ERROR_HANDLE_EOF;
@@ -274,12 +275,29 @@ WintunReceivePacketFast(TUN_SESSION *Session, DWORD *PacketSize, DWORD SpinCycle
     BYTE *Packet = BuffPacket->Data;
     Session->Send.Head = TUN_RING_WRAP(Session->Send.Head + AlignedPacketSize, Session->Capacity);
     Session->Send.PacketsToRelease++;
-    InterlockedIncrement64((LONG64 *)&Session->Stats.PacketsReceived);
-    InterlockedAdd64((LONG64 *)&Session->Stats.BytesReceived, *PacketSize);
     if (Session->PacketFilter && !Session->PacketFilter(Packet, *PacketSize, FALSE, Session->PacketFilterContext))
     {
         InterlockedIncrement64((LONG64 *)&Session->Stats.Discards);
+        /* Mark discarded packet as released immediately in ring and fetch next */
+        BuffPacket->Size |= TUN_PACKET_RELEASE;
+        while (Session->Send.PacketsToRelease)
+        {
+            const TUN_PACKET *ReleaseBuffPacket =
+                (TUN_PACKET *)&Session->Descriptor.Send.Ring->Data[Session->Send.HeadRelease];
+            if ((ReleaseBuffPacket->Size & TUN_PACKET_RELEASE) == 0)
+                break;
+            const ULONG AlignedReleaseSize =
+                TUN_ALIGN(sizeof(TUN_PACKET) + (ReleaseBuffPacket->Size & ~TUN_PACKET_RELEASE));
+            Session->Send.HeadRelease =
+                TUN_RING_WRAP(Session->Send.HeadRelease + AlignedReleaseSize, Session->Capacity);
+            Session->Send.PacketsToRelease--;
+        }
+        WriteULongRelease(&Session->Descriptor.Send.Ring->Head, Session->Send.HeadRelease);
+        SpinCycles = 0; /* Subsequent packet in batch doesn't need to spin */
+        goto restartRx;
     }
+    InterlockedIncrement64((LONG64 *)&Session->Stats.PacketsReceived);
+    InterlockedAdd64((LONG64 *)&Session->Stats.BytesReceived, *PacketSize);
     LeaveCriticalSection(&Session->Send.Lock);
     return Packet;
 cleanup:
@@ -385,16 +403,22 @@ WintunSendPacket(TUN_SESSION *Session, const BYTE *Packet)
     ReleasedBuffPacket->Size &= ~TUN_PACKET_RELEASE;
     while (Session->Receive.PacketsToRelease)
     {
-        const TUN_PACKET *BuffPacket =
+        TUN_PACKET *BuffPacket =
             (TUN_PACKET *)&Session->Descriptor.Receive.Ring->Data[Session->Receive.TailRelease];
         if (BuffPacket->Size & TUN_PACKET_RELEASE)
             break;
         const ULONG AlignedPacketSize = TUN_ALIGN(sizeof(TUN_PACKET) + BuffPacket->Size);
-        InterlockedIncrement64((LONG64 *)&Session->Stats.PacketsSent);
-        InterlockedAdd64((LONG64 *)&Session->Stats.BytesSent, BuffPacket->Size);
         if (Session->PacketFilter && !Session->PacketFilter(BuffPacket->Data, BuffPacket->Size, TRUE, Session->PacketFilterContext))
         {
+            /* Corrupt IP version header so driver jumps to skipNbl without indicating packet */
+            if (BuffPacket->Size > 0)
+                BuffPacket->Data[0] = 0;
             InterlockedIncrement64((LONG64 *)&Session->Stats.Discards);
+        }
+        else
+        {
+            InterlockedIncrement64((LONG64 *)&Session->Stats.PacketsSent);
+            InterlockedAdd64((LONG64 *)&Session->Stats.BytesSent, BuffPacket->Size);
         }
         Session->Receive.TailRelease =
             TUN_RING_WRAP(Session->Receive.TailRelease + AlignedPacketSize, Session->Capacity);

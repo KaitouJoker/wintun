@@ -15,11 +15,10 @@
   <Import Project="wintun.props" />
   <Import Project="wintun.props.user" Condition="exists('wintun.props.user')" />
 
-  <Target Name="Driver" DependsOnTargets="Driver-x86;Driver-amd64" />
-  <Target Name="Dll"    DependsOnTargets="Dll-x86;Dll-amd64" />
+  <Target Name="Driver" DependsOnTargets="Driver-amd64" />
+  <Target Name="Dll"    DependsOnTargets="Dll-amd64" />
   <Target Name="Clean">
     <RemoveDir Directories="$(Configuration)\amd64\" />
-    <RemoveDir Directories="$(Configuration)\x86\" />
     <RemoveDir Directories="dist\" />
   </Target>
 
@@ -30,11 +29,6 @@
   <PropertyGroup>
     <DriverInputs>driver\undocumented.h;driver\wintun.c;driver\wintun.inf;wintun.props;driver\wintun.rc;driver\driver.vcxproj;$(DriverInputs)</DriverInputs>
   </PropertyGroup>
-  <Target Name="Driver-x86"
-    Outputs="$(Configuration)\x86\driver\wintun.sys;$(Configuration)\x86\driver\wintun.inf;$(Configuration)\x86\driver\wintun.cat"
-    Inputs="$(DriverInputs)">
-    <MSBuild Projects="driver\driver.vcxproj" Targets="Build" Properties="Configuration=$(Configuration);Platform=Win32" />
-  </Target>
   <Target Name="Driver-amd64"
     Outputs="$(Configuration)\amd64\driver\wintun.sys;$(Configuration)\amd64\driver\wintun.inf;$(Configuration)\amd64\driver\wintun.cat"
     Inputs="$(DriverInputs)">
@@ -44,11 +38,6 @@
   <!--
     wintun.dll Building
   -->
-  <Target Name="Dll-x86"
-    Outputs="$(Configuration)\x86\wintun.dll"
-    DependsOnTargets="Dll-amd64">
-    <MSBuild Projects="setupapihost\setupapihost.vcxproj;api\api.vcxproj" Targets="Build" Properties="Configuration=$(Configuration);Platform=Win32" />
-  </Target>
   <Target Name="Dll-amd64"
     Outputs="$(Configuration)\amd64\wintun.dll">
     <MSBuild Projects="setupapihost\setupapihost.vcxproj;api\api.vcxproj" Targets="Build" Properties="Configuration=$(Configuration);Platform=x64" />
@@ -66,7 +55,6 @@
     <ZipFilesSrc Include="README.md"                         /><ZipFilesDst Include="$(ZipIntDir)wintun\README.md"            />
     <ZipFilesSrc Include="api\wintun.h"                      /><ZipFilesDst Include="$(ZipIntDir)wintun\include\wintun.h"     />
     <ZipFilesSrc Include="$(Configuration)\amd64\wintun.dll" /><ZipFilesDst Include="$(ZipIntDir)wintun\bin\amd64\wintun.dll" />
-    <ZipFilesSrc Include="$(Configuration)\x86\wintun.dll"   /><ZipFilesDst Include="$(ZipIntDir)wintun\bin\x86\wintun.dll"   />
   </ItemGroup>
   <Target Name="Zip"
     Inputs="@(ZipFilesSrc)"

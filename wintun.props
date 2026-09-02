@@ -57,7 +57,7 @@
   <PropertyGroup>
     <WintunVersionMaj>0</WintunVersionMaj>
     <WintunVersionMin>15</WintunVersionMin>
-    <WintunVersionRel>1</WintunVersionRel>
+    <WintunVersionRel>2</WintunVersionRel>
 
     <!-- Used for versioning, SemVer: MAJOR.MINOR.PATCH -->
     <WintunVersion>$(WintunVersionMaj).$(WintunVersionMin).$(WintunVersionRel)</WintunVersion>

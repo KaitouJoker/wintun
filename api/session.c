@@ -13,6 +13,7 @@
 #include <intrin.h>
 
 #pragma warning(disable : 4200) /* nonstandard: zero-sized array in struct/union */
+#pragma warning(disable : 4324) /* structure was padded due to alignment specifier */
 
 #define TUN_ALIGNMENT sizeof(ULONG)
 #define TUN_ALIGN(Size) (((ULONG)(Size) + ((ULONG)TUN_ALIGNMENT - 1)) & ~((ULONG)TUN_ALIGNMENT - 1))
@@ -53,23 +54,23 @@ typedef struct _TUN_REGISTER_RINGS
 typedef struct _TUN_SESSION
 {
     ULONG Capacity;
-    struct
+    DECLSPEC_CACHEALIGN struct
     {
         ULONG Tail;
         ULONG TailRelease;
         ULONG PacketsToRelease;
         CRITICAL_SECTION Lock;
     } Receive;
-    struct
+    DECLSPEC_CACHEALIGN struct
     {
         ULONG Head;
         ULONG HeadRelease;
         ULONG PacketsToRelease;
         CRITICAL_SECTION Lock;
     } Send;
-    TUN_REGISTER_RINGS Descriptor;
+    DECLSPEC_CACHEALIGN TUN_REGISTER_RINGS Descriptor;
     HANDLE Handle;
-    WINTUN_SESSION_STATS Stats;
+    DECLSPEC_CACHEALIGN WINTUN_SESSION_STATS Stats;
     WINTUN_PACKET_FILTER_CALLBACK PacketFilter;
     VOID *PacketFilterContext;
 } TUN_SESSION;

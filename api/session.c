@@ -323,6 +323,11 @@ BYTE *WINAPI
 WintunAllocateSendPacket(TUN_SESSION *Session, DWORD PacketSize)
 {
     DWORD LastError;
+    if (PacketSize == 0 || PacketSize > WINTUN_MAX_IP_PACKET_SIZE)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return NULL;
+    }
     EnterCriticalSection(&Session->Receive.Lock);
     if (Session->Receive.Tail >= Session->Capacity)
     {

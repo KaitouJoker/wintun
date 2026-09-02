@@ -115,6 +115,12 @@ TUN_SESSION *WINAPI
 WintunStartSession(WINTUN_ADAPTER *Adapter, DWORD Capacity)
 {
     DWORD LastError;
+    if (!Adapter || Capacity < WINTUN_MIN_RING_CAPACITY || Capacity > WINTUN_MAX_RING_CAPACITY ||
+        (Capacity & (Capacity - 1)) != 0)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return NULL;
+    }
     TUN_SESSION *Session = Zalloc(sizeof(TUN_SESSION));
     if (!Session)
     {
@@ -128,6 +134,9 @@ WintunStartSession(WINTUN_ADAPTER *Adapter, DWORD Capacity)
         LastError = LOG_LAST_ERROR(L"Failed to allocate ring memory (requested size: 0x%zx)", (size_t)RingSize * 2);
         goto cleanupRings;
     }
+    /* Pre-fault all ring pages to eliminate demand-paging soft faults and initial burst jitter */
+    for (size_t Offset = 0; Offset < (size_t)RingSize * 2; Offset += 4096)
+        AllocatedRegion[Offset] = 0;
     Session->Descriptor.Send.RingSize = RingSize;
     Session->Descriptor.Send.Ring = (TUN_RING *)AllocatedRegion;
     Session->Descriptor.Send.TailMoved = CreateEventW(&SecurityAttributes, FALSE, FALSE, NULL);
@@ -228,8 +237,12 @@ WintunSetPacketFilter(TUN_SESSION *Session, WINTUN_PACKET_FILTER_CALLBACK Filter
 {
     if (!Session)
         return;
-    Session->PacketFilter = Filter;
+    AcquireSRWLockExclusive(&Session->Send.Lock);
+    AcquireSRWLockExclusive(&Session->Receive.Lock);
     Session->PacketFilterContext = Context;
+    Session->PacketFilter = Filter;
+    ReleaseSRWLockExclusive(&Session->Receive.Lock);
+    ReleaseSRWLockExclusive(&Session->Send.Lock);
 }
 
 WINTUN_RECEIVE_PACKET_FAST_FUNC WintunReceivePacketFast;

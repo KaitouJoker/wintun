@@ -22,16 +22,6 @@ setupapihost-amd64.dll RCDATA "amd64\\setupapihost.dll"
 #        pragma message("AMD64 wintun.sys was not built, so this will not work from WOW64")
 #    endif
 #endif
-#if defined(WANT_ARM64_WOW64)
-#    if defined(BUILT_ARM64_WOW64)
-wintun-arm64.cat RCDATA "arm64\\driver\\wintun.cat"
-wintun-arm64.inf RCDATA "arm64\\driver\\wintun.inf"
-wintun-arm64.sys RCDATA "arm64\\driver\\wintun.sys"
-setupapihost-arm64.dll RCDATA "arm64\\setupapihost.dll"
-#    else
-#        pragma message("ARM64 wintun.sys was not built, so this will not work from WOW64")
-#    endif
-#endif
 
 #define STRINGIZE(x) #x
 #define EXPAND(x) STRINGIZE(x)

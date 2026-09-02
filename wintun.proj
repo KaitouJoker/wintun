@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <!--
   SPDX-License-Identifier: GPL-2.0
 
@@ -15,12 +15,10 @@
   <Import Project="wintun.props" />
   <Import Project="wintun.props.user" Condition="exists('wintun.props.user')" />
 
-  <Target Name="Driver" DependsOnTargets="Driver-x86;Driver-amd64;Driver-arm64" />
-  <Target Name="Dll"    DependsOnTargets="Dll-x86;Dll-amd64;Dll-arm64" />
+  <Target Name="Driver" DependsOnTargets="Driver-x86;Driver-amd64" />
+  <Target Name="Dll"    DependsOnTargets="Dll-x86;Dll-amd64" />
   <Target Name="Clean">
     <RemoveDir Directories="$(Configuration)\amd64\" />
-    <RemoveDir Directories="$(Configuration)\arm\" />
-    <RemoveDir Directories="$(Configuration)\arm64\" />
     <RemoveDir Directories="$(Configuration)\x86\" />
     <RemoveDir Directories="dist\" />
   </Target>
@@ -42,38 +40,18 @@
     Inputs="$(DriverInputs)">
     <MSBuild Projects="driver\driver.vcxproj" Targets="Build" Properties="Configuration=$(Configuration);Platform=x64" />
   </Target>
-  <Target Name="Driver-arm"
-    Outputs="$(Configuration)\arm\driver\wintun.sys;$(Configuration)\arm\driver\wintun.inf;$(Configuration)\arm\driver\wintun.cat"
-    Inputs="$(DriverInputs)">
-    <MSBuild Projects="driver\driver.vcxproj" Targets="Build" Properties="Configuration=$(Configuration);Platform=ARM" />
-  </Target>
-  <Target Name="Driver-arm64"
-    Outputs="$(Configuration)\arm64\driver\wintun.sys;$(Configuration)\arm64\driver\wintun.inf;$(Configuration)\arm64\driver\wintun.cat"
-    Inputs="$(DriverInputs)">
-    <MSBuild Projects="driver\driver.vcxproj" Targets="Build" Properties="Configuration=$(Configuration);Platform=ARM64" />
-  </Target>
 
   <!--
     wintun.dll Building
   -->
   <Target Name="Dll-x86"
     Outputs="$(Configuration)\x86\wintun.dll"
-    DependsOnTargets="Dll-amd64;Dll-arm64">
+    DependsOnTargets="Dll-amd64">
     <MSBuild Projects="setupapihost\setupapihost.vcxproj;api\api.vcxproj" Targets="Build" Properties="Configuration=$(Configuration);Platform=Win32" />
   </Target>
   <Target Name="Dll-amd64"
-    Outputs="$(Configuration)\amd64\wintun.dll"
-    DependsOnTargets="Dll-arm64">
+    Outputs="$(Configuration)\amd64\wintun.dll">
     <MSBuild Projects="setupapihost\setupapihost.vcxproj;api\api.vcxproj" Targets="Build" Properties="Configuration=$(Configuration);Platform=x64" />
-  </Target>
-  <Target Name="Dll-arm"
-    Outputs="$(Configuration)\arm\wintun.dll"
-    DependsOnTargets="Dll-arm64">
-    <MSBuild Projects="setupapihost\setupapihost.vcxproj;api\api.vcxproj" Targets="Build" Properties="Configuration=$(Configuration);Platform=ARM" />
-  </Target>
-  <Target Name="Dll-arm64"
-    Outputs="$(Configuration)\arm64\wintun.dll">
-    <MSBuild Projects="setupapihost\setupapihost.vcxproj;api\api.vcxproj" Targets="Build" Properties="Configuration=$(Configuration);Platform=ARM64" />
   </Target>
 
   <!--
@@ -88,7 +66,6 @@
     <ZipFilesSrc Include="README.md"                         /><ZipFilesDst Include="$(ZipIntDir)wintun\README.md"            />
     <ZipFilesSrc Include="api\wintun.h"                      /><ZipFilesDst Include="$(ZipIntDir)wintun\include\wintun.h"     />
     <ZipFilesSrc Include="$(Configuration)\amd64\wintun.dll" /><ZipFilesDst Include="$(ZipIntDir)wintun\bin\amd64\wintun.dll" />
-    <ZipFilesSrc Include="$(Configuration)\arm64\wintun.dll" /><ZipFilesDst Include="$(ZipIntDir)wintun\bin\arm64\wintun.dll" />
     <ZipFilesSrc Include="$(Configuration)\x86\wintun.dll"   /><ZipFilesDst Include="$(ZipIntDir)wintun\bin\x86\wintun.dll"   />
   </ItemGroup>
   <Target Name="Zip"

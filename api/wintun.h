@@ -265,6 +265,91 @@ BYTE *(WINAPI WINTUN_ALLOCATE_SEND_PACKET_FUNC)(_In_ WINTUN_SESSION_HANDLE Sessi
  */
 typedef VOID(WINAPI WINTUN_SEND_PACKET_FUNC)(_In_ WINTUN_SESSION_HANDLE Session, _In_ const BYTE *Packet);
 
+/**
+ * Standard DSCP values for QoS packet prioritization
+ */
+#define WINTUN_DSCP_DEFAULT 0x00
+#define WINTUN_DSCP_CS1     0x08
+#define WINTUN_DSCP_AF11    0x0A
+#define WINTUN_DSCP_AF21    0x12
+#define WINTUN_DSCP_AF31    0x1A
+#define WINTUN_DSCP_AF41    0x22
+#define WINTUN_DSCP_CS5     0x28
+#define WINTUN_DSCP_EF      0x2E /* Expedited Forwarding (Highest priority for real-time game UDP) */
+
+/**
+ * Real-time session telemetry statistics structure
+ */
+typedef struct _WINTUN_SESSION_STATS
+{
+    DWORD64 PacketsReceived;
+    DWORD64 PacketsSent;
+    DWORD64 BytesReceived;
+    DWORD64 BytesSent;
+    DWORD64 SpinHits;
+    DWORD64 WaitHits;
+    DWORD64 Discards;
+} WINTUN_SESSION_STATS;
+
+/**
+ * Retrieves real-time session telemetry statistics.
+ *
+ * @param Session       Wintun session handle obtained with WintunStartSession
+ * @param Stats         Pointer to WINTUN_SESSION_STATS to receive statistics
+ */
+typedef VOID(WINAPI WINTUN_GET_SESSION_STATS_FUNC)(_In_ WINTUN_SESSION_HANDLE Session, _Out_ WINTUN_SESSION_STATS *Stats);
+
+/**
+ * Retrieves a packet with adaptive spin-wait for ultra-low latency game loops.
+ *
+ * @param Session       Wintun session handle obtained with WintunStartSession
+ * @param PacketSize    Pointer to receive packet size
+ * @param SpinCycles    Number of CPU spin cycles to attempt before returning ERROR_NO_MORE_ITEMS
+ *
+ * @return Pointer to layer 3 packet or NULL on failure
+ */
+typedef _Must_inspect_result_
+_Return_type_success_(return != NULL)
+_Post_maybenull_
+_Post_writable_byte_size_(*PacketSize)
+BYTE *(WINAPI WINTUN_RECEIVE_PACKET_FAST_FUNC)(
+    _In_ WINTUN_SESSION_HANDLE Session,
+    _Out_ DWORD *PacketSize,
+    _In_ DWORD SpinCycles);
+
+/**
+ * Sends a packet with QoS DSCP tagging (DiffServ) applied to IPv4 header.
+ *
+ * @param Session       Wintun session handle obtained with WintunStartSession
+ * @param Packet        Packet obtained with WintunAllocateSendPacket
+ * @param Dscp          DSCP priority tag (e.g. WINTUN_DSCP_EF for KartRider UDP packets)
+ */
+typedef VOID(WINAPI WINTUN_SEND_PACKET_QOS_FUNC)(
+    _In_ WINTUN_SESSION_HANDLE Session,
+    _In_ const BYTE *Packet,
+    _In_ UCHAR Dscp);
+
+/**
+ * Packet filter callback for traffic inspection or simulation
+ */
+typedef BOOL(CALLBACK *WINTUN_PACKET_FILTER_CALLBACK)(
+    _In_ const BYTE *Packet,
+    _In_ DWORD PacketSize,
+    _In_ BOOL IsOutbound,
+    _In_opt_ VOID *Context);
+
+/**
+ * Sets optional packet filter callback.
+ *
+ * @param Session       Wintun session handle obtained with WintunStartSession
+ * @param Filter        Callback function or NULL to disable
+ * @param Context       User context passed to callback
+ */
+typedef VOID(WINAPI WINTUN_SET_PACKET_FILTER_FUNC)(
+    _In_ WINTUN_SESSION_HANDLE Session,
+    _In_opt_ WINTUN_PACKET_FILTER_CALLBACK Filter,
+    _In_opt_ VOID *Context);
+
 #if defined(_MSC_VER)
 #    pragma warning(pop)
 #endif
@@ -272,3 +357,4 @@ typedef VOID(WINAPI WINTUN_SEND_PACKET_FUNC)(_In_ WINTUN_SESSION_HANDLE Session,
 #ifdef __cplusplus
 }
 #endif
+

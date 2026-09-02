@@ -14,3 +14,7 @@ EXPORTS
 	WintunDeleteDriver
 	WintunSetLogger
 	WintunStartSession
+	WintunGetSessionStats
+	WintunReceivePacketFast
+	WintunSendPacketQoS
+	WintunSetPacketFilter

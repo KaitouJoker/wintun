@@ -260,7 +260,7 @@ WintunReceivePacketFast(TUN_SESSION *Session, DWORD *PacketSize, DWORD SpinCycle
             return NULL;
         }
         /* Spin outside critical section to prevent blocking concurrent packet releases */
-        ULONG InitialHead = ReadULongAcquire(&Session->Descriptor.Send.Ring->Head);
+        ULONG InitialHead = Session->Send.Head;
         if (InitialHead == InitialTail)
         {
             for (DWORD i = 0; i < SpinCycles; i++)
@@ -481,8 +481,8 @@ WintunSendPacket(TUN_SESSION *Session, const BYTE *Packet)
     if (Session->Descriptor.Receive.Ring->Tail != Session->Receive.TailRelease)
     {
         WriteULongRelease(&Session->Descriptor.Receive.Ring->Tail, Session->Receive.TailRelease);
-        if (ReadAcquire(&Session->Descriptor.Receive.Ring->Alertable))
-            ShouldSignal = TRUE;
+        MemoryBarrier();
+        ShouldSignal = TRUE;
     }
     ReleaseSRWLockExclusive(&Session->Receive.Lock);
     if (ShouldSignal)

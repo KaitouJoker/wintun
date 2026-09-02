@@ -59,14 +59,14 @@ typedef struct _TUN_SESSION
         ULONG Tail;
         ULONG TailRelease;
         ULONG PacketsToRelease;
-        CRITICAL_SECTION Lock;
+        SRWLOCK Lock;
     } Receive;
     DECLSPEC_CACHEALIGN struct
     {
         ULONG Head;
         ULONG HeadRelease;
         ULONG PacketsToRelease;
-        CRITICAL_SECTION Lock;
+        SRWLOCK Lock;
     } Send;
     DECLSPEC_CACHEALIGN TUN_REGISTER_RINGS Descriptor;
     HANDLE Handle;
@@ -167,8 +167,8 @@ WintunStartSession(WINTUN_ADAPTER *Adapter, DWORD Capacity)
         goto cleanupHandle;
     }
     Session->Capacity = Capacity;
-    (VOID) InitializeCriticalSectionAndSpinCount(&Session->Receive.Lock, LOCK_SPIN_COUNT);
-    (VOID) InitializeCriticalSectionAndSpinCount(&Session->Send.Lock, LOCK_SPIN_COUNT);
+    InitializeSRWLock(&Session->Receive.Lock);
+    InitializeSRWLock(&Session->Send.Lock);
     return Session;
 cleanupHandle:
     CloseHandle(Session->Handle);
@@ -190,8 +190,6 @@ _Use_decl_annotations_
 VOID WINAPI
 WintunEndSession(TUN_SESSION *Session)
 {
-    DeleteCriticalSection(&Session->Send.Lock);
-    DeleteCriticalSection(&Session->Receive.Lock);
     CloseHandle(Session->Handle);
     CloseHandle(Session->Descriptor.Send.TailMoved);
     CloseHandle(Session->Descriptor.Receive.TailMoved);
@@ -270,7 +268,7 @@ WintunReceivePacketFast(TUN_SESSION *Session, DWORD *PacketSize, DWORD SpinCycle
         }
     }
 
-    EnterCriticalSection(&Session->Send.Lock);
+    AcquireSRWLockExclusive(&Session->Send.Lock);
 restartRx:
     if (Session->Send.Head >= Session->Capacity)
     {
@@ -335,10 +333,10 @@ restartRx:
     }
     InterlockedIncrement64((LONG64 *)&Session->Stats.PacketsReceived);
     InterlockedAdd64((LONG64 *)&Session->Stats.BytesReceived, *PacketSize);
-    LeaveCriticalSection(&Session->Send.Lock);
+    ReleaseSRWLockExclusive(&Session->Send.Lock);
     return Packet;
 cleanup:
-    LeaveCriticalSection(&Session->Send.Lock);
+    ReleaseSRWLockExclusive(&Session->Send.Lock);
     SetLastError(LastError);
     return NULL;
 }
@@ -356,7 +354,7 @@ _Use_decl_annotations_
 VOID WINAPI
 WintunReleaseReceivePacket(TUN_SESSION *Session, const BYTE *Packet)
 {
-    EnterCriticalSection(&Session->Send.Lock);
+    AcquireSRWLockExclusive(&Session->Send.Lock);
     TUN_PACKET *ReleasedBuffPacket = (TUN_PACKET *)(Packet - offsetof(TUN_PACKET, Data));
     ReleasedBuffPacket->Size |= TUN_PACKET_RELEASE;
     while (Session->Send.PacketsToRelease)
@@ -369,7 +367,7 @@ WintunReleaseReceivePacket(TUN_SESSION *Session, const BYTE *Packet)
         Session->Send.PacketsToRelease--;
     }
     WriteULongRelease(&Session->Descriptor.Send.Ring->Head, Session->Send.HeadRelease);
-    LeaveCriticalSection(&Session->Send.Lock);
+    ReleaseSRWLockExclusive(&Session->Send.Lock);
 }
 
 WINTUN_ALLOCATE_SEND_PACKET_FUNC WintunAllocateSendPacket;
@@ -383,7 +381,7 @@ WintunAllocateSendPacket(TUN_SESSION *Session, DWORD PacketSize)
         SetLastError(ERROR_INVALID_PARAMETER);
         return NULL;
     }
-    EnterCriticalSection(&Session->Receive.Lock);
+    AcquireSRWLockExclusive(&Session->Receive.Lock);
     if (Session->Receive.Tail >= Session->Capacity)
     {
         LastError = ERROR_HANDLE_EOF;
@@ -427,10 +425,10 @@ WintunAllocateSendPacket(TUN_SESSION *Session, DWORD PacketSize)
     _mm_prefetch((const char *)BuffPacket, _MM_HINT_T0);
     Session->Receive.Tail = TUN_RING_WRAP(Session->Receive.Tail + AlignedPacketSize, Session->Capacity);
     Session->Receive.PacketsToRelease++;
-    LeaveCriticalSection(&Session->Receive.Lock);
+    ReleaseSRWLockExclusive(&Session->Receive.Lock);
     return Packet;
 cleanup:
-    LeaveCriticalSection(&Session->Receive.Lock);
+    ReleaseSRWLockExclusive(&Session->Receive.Lock);
     SetLastError(LastError);
     return NULL;
 }
@@ -440,7 +438,7 @@ _Use_decl_annotations_
 VOID WINAPI
 WintunSendPacket(TUN_SESSION *Session, const BYTE *Packet)
 {
-    EnterCriticalSection(&Session->Receive.Lock);
+    AcquireSRWLockExclusive(&Session->Receive.Lock);
     TUN_PACKET *ReleasedBuffPacket = (TUN_PACKET *)(Packet - offsetof(TUN_PACKET, Data));
     ReleasedBuffPacket->Size &= ~TUN_PACKET_RELEASE;
     while (Session->Receive.PacketsToRelease)
@@ -472,7 +470,7 @@ WintunSendPacket(TUN_SESSION *Session, const BYTE *Packet)
         if (ReadAcquire(&Session->Descriptor.Receive.Ring->Alertable))
             SetEvent(Session->Descriptor.Receive.TailMoved);
     }
-    LeaveCriticalSection(&Session->Receive.Lock);
+    ReleaseSRWLockExclusive(&Session->Receive.Lock);
 }
 
 WINTUN_SEND_PACKET_QOS_FUNC WintunSendPacketQoS;

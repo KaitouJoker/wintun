@@ -56,12 +56,11 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup>
     <WintunVersionMaj>0</WintunVersionMaj>
-    <WintunVersionMin>14</WintunVersionMin>
-    <WintunVersionRel>2</WintunVersionRel>
+    <WintunVersionMin>15</WintunVersionMin>
+    <WintunVersionRel>0</WintunVersionRel>
 
-    <!-- Used for versioning, must be n.n[.n[.n]]. -->
-    <WintunVersion>$(WintunVersionMaj).$(WintunVersionMin)</WintunVersion>
-    <WintunVersion Condition="'$(WintunVersionRel)'!='0'">$(WintunVersion).$(WintunVersionRel)</WintunVersion>
+    <!-- Used for versioning, SemVer: MAJOR.MINOR.PATCH -->
+    <WintunVersion>$(WintunVersionMaj).$(WintunVersionMin).$(WintunVersionRel)</WintunVersion>
 
     <!-- .vcxproj are using different platform names. -->
     <WintunPlatform Condition="'$(Platform)'=='Win32'">x86</WintunPlatform>

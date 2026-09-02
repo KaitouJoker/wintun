@@ -464,13 +464,16 @@ WintunSendPacket(TUN_SESSION *Session, const BYTE *Packet)
             TUN_RING_WRAP(Session->Receive.TailRelease + AlignedPacketSize, Session->Capacity);
         Session->Receive.PacketsToRelease--;
     }
+    BOOL ShouldSignal = FALSE;
     if (Session->Descriptor.Receive.Ring->Tail != Session->Receive.TailRelease)
     {
         WriteULongRelease(&Session->Descriptor.Receive.Ring->Tail, Session->Receive.TailRelease);
         if (ReadAcquire(&Session->Descriptor.Receive.Ring->Alertable))
-            SetEvent(Session->Descriptor.Receive.TailMoved);
+            ShouldSignal = TRUE;
     }
     ReleaseSRWLockExclusive(&Session->Receive.Lock);
+    if (ShouldSignal)
+        SetEvent(Session->Descriptor.Receive.TailMoved);
 }
 
 WINTUN_SEND_PACKET_QOS_FUNC WintunSendPacketQoS;

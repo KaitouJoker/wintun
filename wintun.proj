@@ -40,7 +40,7 @@
   -->
   <Target Name="Dll-amd64"
     Outputs="$(Configuration)\amd64\wintun.dll">
-    <MSBuild Projects="setupapihost\setupapihost.vcxproj;api\api.vcxproj" Targets="Build" Properties="Configuration=$(Configuration);Platform=x64" />
+    <MSBuild Projects="api\api.vcxproj" Targets="Build" Properties="Configuration=$(Configuration);Platform=x64" />
   </Target>
 
   <!--

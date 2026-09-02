@@ -12,17 +12,6 @@ wintun.cat RCDATA "driver\\wintun.cat"
 wintun.inf RCDATA "driver\\wintun.inf"
 wintun.sys RCDATA "driver\\wintun.sys"
 
-#if defined(WANT_AMD64_WOW64)
-#    if defined(BUILT_AMD64_WOW64)
-wintun-amd64.cat RCDATA "amd64\\driver\\wintun.cat"
-wintun-amd64.inf RCDATA "amd64\\driver\\wintun.inf"
-wintun-amd64.sys RCDATA "amd64\\driver\\wintun.sys"
-setupapihost-amd64.dll RCDATA "amd64\\setupapihost.dll"
-#    else
-#        pragma message("AMD64 wintun.sys was not built, so this will not work from WOW64")
-#    endif
-#endif
-
 #define STRINGIZE(x) #x
 #define EXPAND(x) STRINGIZE(x)
 

@@ -374,6 +374,11 @@ WintunAllocateSendPacket(TUN_SESSION *Session, DWORD PacketSize)
                 break;
         }
     }
+    if (BuffHead >= Session->Capacity)
+    {
+        LastError = ERROR_HANDLE_EOF;
+        goto cleanup;
+    }
     if (AlignedPacketSize > BuffSpace)
     {
         LastError = ERROR_BUFFER_OVERFLOW;

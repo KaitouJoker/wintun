@@ -212,13 +212,13 @@ WintunGetSessionStats(TUN_SESSION *Session, WINTUN_SESSION_STATS *Stats)
 {
     if (!Session || !Stats)
         return;
-    Stats->PacketsReceived = (DWORD64)InterlockedCompareExchange64((LONG64 *)&Session->Stats.PacketsReceived, 0, 0);
-    Stats->PacketsSent = (DWORD64)InterlockedCompareExchange64((LONG64 *)&Session->Stats.PacketsSent, 0, 0);
-    Stats->BytesReceived = (DWORD64)InterlockedCompareExchange64((LONG64 *)&Session->Stats.BytesReceived, 0, 0);
-    Stats->BytesSent = (DWORD64)InterlockedCompareExchange64((LONG64 *)&Session->Stats.BytesSent, 0, 0);
-    Stats->SpinHits = (DWORD64)InterlockedCompareExchange64((LONG64 *)&Session->Stats.SpinHits, 0, 0);
-    Stats->WaitHits = (DWORD64)InterlockedCompareExchange64((LONG64 *)&Session->Stats.WaitHits, 0, 0);
-    Stats->Discards = (DWORD64)InterlockedCompareExchange64((LONG64 *)&Session->Stats.Discards, 0, 0);
+    Stats->PacketsReceived = *(volatile DWORD64 *)&Session->Stats.PacketsReceived;
+    Stats->PacketsSent = *(volatile DWORD64 *)&Session->Stats.PacketsSent;
+    Stats->BytesReceived = *(volatile DWORD64 *)&Session->Stats.BytesReceived;
+    Stats->BytesSent = *(volatile DWORD64 *)&Session->Stats.BytesSent;
+    Stats->SpinHits = *(volatile DWORD64 *)&Session->Stats.SpinHits;
+    Stats->WaitHits = *(volatile DWORD64 *)&Session->Stats.WaitHits;
+    Stats->Discards = *(volatile DWORD64 *)&Session->Stats.Discards;
 }
 
 WINTUN_SET_PACKET_FILTER_FUNC WintunSetPacketFilter;
@@ -331,8 +331,8 @@ restartRx:
         SpinCycles = 0; /* Subsequent packet in batch doesn't need to spin */
         goto restartRx;
     }
-    InterlockedIncrement64((LONG64 *)&Session->Stats.PacketsReceived);
-    InterlockedAdd64((LONG64 *)&Session->Stats.BytesReceived, *PacketSize);
+    Session->Stats.PacketsReceived++;
+    Session->Stats.BytesReceived += *PacketSize;
     ReleaseSRWLockExclusive(&Session->Send.Lock);
     return Packet;
 cleanup:
@@ -457,8 +457,8 @@ WintunSendPacket(TUN_SESSION *Session, const BYTE *Packet)
         }
         else
         {
-            InterlockedIncrement64((LONG64 *)&Session->Stats.PacketsSent);
-            InterlockedAdd64((LONG64 *)&Session->Stats.BytesSent, BuffPacket->Size);
+            Session->Stats.PacketsSent++;
+            Session->Stats.BytesSent += BuffPacket->Size;
         }
         Session->Receive.TailRelease =
             TUN_RING_WRAP(Session->Receive.TailRelease + AlignedPacketSize, Session->Capacity);

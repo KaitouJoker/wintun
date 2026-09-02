@@ -481,7 +481,6 @@ TunProcessReceiveData(_Inout_ TUN_CTX *Ctx)
             if (RingHead == RingTail)
             {
                 WriteRelease(&Ring->Alertable, TRUE);
-                MemoryBarrier();
                 RingTail = ReadULongAcquire(&Ring->Tail);
                 if (RingHead == RingTail)
                 {

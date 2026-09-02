@@ -192,12 +192,18 @@ WintunCloseAdapter(WINTUN_ADAPTER *Adapter)
         return;
     Free(Adapter->InterfaceFilename);
     if (Adapter->SwDevice)
+    {
         SwDeviceClose(Adapter->SwDevice);
+        Adapter->SwDevice = NULL;
+    }
     if (Adapter->DevInfo)
     {
+        /* Gracefully disable adapter first so TCP/IP stack flushes connections cleanly */
+        AdapterDisableInstance(Adapter->DevInfo, &Adapter->DevInfoData);
         if (!AdapterRemoveInstance(Adapter->DevInfo, &Adapter->DevInfoData))
             LOG_LAST_ERROR(L"Failed to remove adapter when closing");
         SetupDiDestroyDeviceInfoList(Adapter->DevInfo);
+        Adapter->DevInfo = NULL;
     }
     Free(Adapter);
     QueueUpOrphanedDeviceCleanupRoutine();

@@ -26,7 +26,7 @@
       <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <ResourceCompile>
-      <AdditionalIncludeDirectories>..\$(Configuration)\$(WintunPlatform);..\$(Configuration);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\driver-assets\$(WintunPlatform);..\$(Configuration)\$(WintunPlatform);..\$(Configuration);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions Condition="Exists('..\$(Configuration)\arm64\driver\wintun.sys') And Exists('..\$(Configuration)\arm64\setupapihost.dll')">BUILT_ARM64_WOW64;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PreprocessorDefinitions Condition="Exists('..\$(Configuration)\amd64\driver\wintun.sys') And Exists('..\$(Configuration)\amd64\setupapihost.dll')">BUILT_AMD64_WOW64;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PreprocessorDefinitions Condition="'$(Platform)'=='Win32'">WANT_ARM64_WOW64;WANT_AMD64_WOW64;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -79,14 +79,18 @@
   <PropertyGroup>
     <CleanDependsOn>CleanInfVersion;CleanNci;$(CleanDependsOn)</CleanDependsOn>
   </PropertyGroup>
-  <Target Name="BuildInfVersion" BeforeTargets="ClCompile" Inputs="$(OutDir)driver\wintun.inf" Outputs="$(IntDir)wintun-inf.h">
-    <Exec Command="cscript.exe /nologo &quot;extract-driverver.js&quot; &lt; &quot;$(OutDir)driver\wintun.inf&quot; &gt; &quot;$(IntDir)wintun-inf.h&quot;" />
+  <Target Name="BuildInfVersion" BeforeTargets="ClCompile" Outputs="$(IntDir)wintun-inf.h">
+    <PropertyGroup>
+      <InfSource Condition="Exists('$(OutDir)driver\wintun.inf')">$(OutDir)driver\wintun.inf</InfSource>
+      <InfSource Condition="'$(InfSource)'==''">$(ProjectDir)..\driver\wintun.inf</InfSource>
+    </PropertyGroup>
+    <Exec Command="cscript.exe /nologo &quot;$(ProjectDir)extract-driverver.js&quot; &lt; &quot;$(InfSource)&quot; &gt; &quot;$(IntDir)wintun-inf.h&quot;" />
   </Target>
   <Target Name="CleanInfVersion">
     <Delete Files="$(IntDir)wintun-inf.h" />
   </Target>
   <Target Name="BuildNci" BeforeTargets="Link" Inputs="$(ProjectDir)nci.def;$(ProjectDir)nci.h" Outputs="$(IntDir)nci.lib">
-    <Exec Command="cl.exe /nologo /DGENERATE_LIB /Ob0 /c /Fo&quot;$(IntDir)nci.obj&quot; /Tc &quot;nci.h&quot;" />
+    <Exec Command="cl.exe /nologo /DGENERATE_LIB /Ob0 /c /Fo&quot;$(IntDir)nci.obj&quot; /Tc &quot;$(ProjectDir)nci.h&quot;" />
     <Exec Command="lib.exe /def:&quot;$(ProjectDir)nci.def&quot; /out:&quot;$(IntDir)nci.lib&quot; /machine:$(PlatformTarget) /nologo &quot;$(IntDir)nci.obj&quot;" />
   </Target>
   <Target Name="CleanNci">

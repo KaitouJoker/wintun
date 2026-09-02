@@ -3,6 +3,7 @@
  * Copyright (C) 2018-2021 WireGuard LLC. All Rights Reserved.
  */
 
+var found = false;
 while (!WScript.StdIn.AtEndOfStream) {
 	var line = WScript.StdIn.ReadLine();
 	if (line.substr(0, 12) != "DriverVer = ")
@@ -13,5 +14,12 @@ while (!WScript.StdIn.AtEndOfStream) {
 	var time = Date.UTC(date[2], date[0] - 1, date[1]).toString()
 	WScript.Echo("#define WINTUN_INF_FILETIME { (DWORD)((" + time + "0000ULL + 116444736000000000ULL) & 0xffffffffU), (DWORD)((" + time + "0000ULL + 116444736000000000ULL) >> 32) }")
 	WScript.Echo("#define WINTUN_INF_VERSION ((" + ver[0] + "ULL << 48) | (" + ver[1] + "ULL << 32) | (" + ver[2] + "ULL << 16) | (" + ver[3] + "ULL << 0))")
+	found = true;
 	break;
+}
+if (!found) {
+	var now = new Date();
+	var time = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()).toString();
+	WScript.Echo("#define WINTUN_INF_FILETIME { (DWORD)((" + time + "0000ULL + 116444736000000000ULL) & 0xffffffffU), (DWORD)((" + time + "0000ULL + 116444736000000000ULL) >> 32) }");
+	WScript.Echo("#define WINTUN_INF_VERSION ((0ULL << 48) | (14ULL << 32) | (2ULL << 16) | (0ULL << 0))");
 }

@@ -112,7 +112,7 @@ cleanupKey:
 
 static volatile LONG OrphanThreadIsWorking = FALSE;
 
-static DWORD
+static DWORD WINAPI
 DoOrphanedDeviceCleanup(_In_opt_ LPVOID Ctx)
 {
     AdapterCleanupOrphanedDevices();
@@ -513,7 +513,7 @@ typedef struct _SW_DEVICE_CREATE_CTX
     HANDLE Triggered;
 } SW_DEVICE_CREATE_CTX;
 
-static VOID
+static VOID CALLBACK
 DeviceCreateCallback(
     _In_ HSWDEVICE SwDevice,
     _In_ HRESULT CreateResult,

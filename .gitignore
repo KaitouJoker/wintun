@@ -6,6 +6,7 @@
 /dist
 /Debug
 /Release
+/driver-assets
 
 # Static Driver Verifier Output
 /driver/sdv

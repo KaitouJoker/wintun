@@ -75,19 +75,38 @@ typedef struct _TUN_SESSION
     VOID *PacketFilterContext;
 } TUN_SESSION;
 
-static inline USHORT
-ComputeIpChecksum(const UCHAR *Header, DWORD HeaderLength)
+static inline VOID
+UpdateIpDscp(UCHAR *Packet, UCHAR Dscp)
 {
-    DWORD Sum = 0;
-    const USHORT *Words = (const USHORT *)Header;
-    for (DWORD i = 0; i < (HeaderLength / 2); i++)
+    UCHAR Version = Packet[0] >> 4;
+    if (Version == 4)
     {
-        if (i != 5) /* Skip existing checksum field at offset 10 */
-            Sum += Words[i];
+        DWORD Ihl = (Packet[0] & 0x0F) * 4;
+        if (Ihl >= 20)
+        {
+            USHORT OldWord0 = *(USHORT *)&Packet[0];
+            UCHAR OldTOS = Packet[1];
+            UCHAR NewTOS = (UCHAR)((Dscp << 2) | (OldTOS & 0x03));
+            if (OldTOS == NewTOS)
+                return;
+            Packet[1] = NewTOS;
+            USHORT NewWord0 = *(USHORT *)&Packet[0];
+            USHORT OldChecksum = *(USHORT *)&Packet[10];
+            /* RFC 1624 Eqn. 3 incremental checksum: HC' = ~(~HC + ~m + m') */
+            DWORD Sum = (~OldChecksum & 0xFFFF) + (~OldWord0 & 0xFFFF) + NewWord0;
+            while (Sum >> 16)
+                Sum = (Sum & 0xFFFF) + (Sum >> 16);
+            *(USHORT *)&Packet[10] = (USHORT)(~Sum);
+        }
     }
-    while (Sum >> 16)
-        Sum = (Sum & 0xFFFF) + (Sum >> 16);
-    return (USHORT)(~Sum);
+    else if (Version == 6)
+    {
+        /* IPv6 Traffic Class (bits 4..11) - no header checksum in IPv6 */
+        UCHAR OldTClass = (UCHAR)(((Packet[0] & 0x0F) << 4) | ((Packet[1] & 0xF0) >> 4));
+        UCHAR NewTClass = (UCHAR)((Dscp << 2) | (OldTClass & 0x03));
+        Packet[0] = (UCHAR)((Packet[0] & 0xF0) | (NewTClass >> 4));
+        Packet[1] = (UCHAR)((Packet[1] & 0x0F) | ((NewTClass & 0x0F) << 4));
+    }
 }
 
 WINTUN_START_SESSION_FUNC WintunStartSession;
@@ -462,20 +481,7 @@ VOID WINAPI
 WintunSendPacketQoS(TUN_SESSION *Session, const BYTE *Packet, UCHAR Dscp)
 {
     if (Packet && Dscp != WINTUN_DSCP_DEFAULT)
-    {
-        /* Check if IPv4 */
-        if ((Packet[0] >> 4) == 4)
-        {
-            DWORD Ihl = (Packet[0] & 0x0F) * 4;
-            if (Ihl >= 20)
-            {
-                UCHAR *MutablePacket = (UCHAR *)Packet;
-                MutablePacket[1] = (UCHAR)((Dscp << 2) | (MutablePacket[1] & 0x03));
-                *(USHORT *)&MutablePacket[10] = 0;
-                *(USHORT *)&MutablePacket[10] = ComputeIpChecksum(MutablePacket, Ihl);
-            }
-        }
-    }
+        UpdateIpDscp((UCHAR *)Packet, Dscp);
     WintunSendPacket(Session, Packet);
 }
 

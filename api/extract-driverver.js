@@ -21,5 +21,5 @@ if (!found) {
 	var now = new Date();
 	var time = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()).toString();
 	WScript.Echo("#define WINTUN_INF_FILETIME { (DWORD)((" + time + "0000ULL + 116444736000000000ULL) & 0xffffffffU), (DWORD)((" + time + "0000ULL + 116444736000000000ULL) >> 32) }");
-	WScript.Echo("#define WINTUN_INF_VERSION ((0ULL << 48) | (15ULL << 32) | (2ULL << 16) | (0ULL << 0))");
+	WScript.Echo("#define WINTUN_INF_VERSION ((0ULL << 48) | (15ULL << 32) | (3ULL << 16) | (0ULL << 0))");
 }

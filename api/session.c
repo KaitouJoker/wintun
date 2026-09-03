@@ -59,14 +59,14 @@ typedef struct _TUN_SESSION
         ULONG Tail;
         ULONG TailRelease;
         ULONG PacketsToRelease;
-        SRWLOCK Lock;
+        CRITICAL_SECTION Lock;
     } Receive;
     DECLSPEC_CACHEALIGN struct
     {
         ULONG Head;
         ULONG HeadRelease;
         ULONG PacketsToRelease;
-        SRWLOCK Lock;
+        CRITICAL_SECTION Lock;
     } Send;
     DECLSPEC_CACHEALIGN TUN_REGISTER_RINGS Descriptor;
     HANDLE Handle;
@@ -176,8 +176,8 @@ WintunStartSession(WINTUN_ADAPTER *Adapter, DWORD Capacity)
         goto cleanupHandle;
     }
     Session->Capacity = Capacity;
-    InitializeSRWLock(&Session->Receive.Lock);
-    InitializeSRWLock(&Session->Send.Lock);
+    (VOID)InitializeCriticalSectionAndSpinCount(&Session->Receive.Lock, LOCK_SPIN_COUNT);
+    (VOID)InitializeCriticalSectionAndSpinCount(&Session->Send.Lock, LOCK_SPIN_COUNT);
     return Session;
 cleanupHandle:
     CloseHandle(Session->Handle);
@@ -199,6 +199,8 @@ _Use_decl_annotations_
 VOID WINAPI
 WintunEndSession(TUN_SESSION *Session)
 {
+    DeleteCriticalSection(&Session->Send.Lock);
+    DeleteCriticalSection(&Session->Receive.Lock);
     CloseHandle(Session->Handle);
     CloseHandle(Session->Descriptor.Send.TailMoved);
     CloseHandle(Session->Descriptor.Receive.TailMoved);
@@ -237,12 +239,12 @@ WintunSetPacketFilter(TUN_SESSION *Session, WINTUN_PACKET_FILTER_CALLBACK Filter
 {
     if (!Session)
         return;
-    AcquireSRWLockExclusive(&Session->Send.Lock);
-    AcquireSRWLockExclusive(&Session->Receive.Lock);
+    EnterCriticalSection(&Session->Send.Lock);
+    EnterCriticalSection(&Session->Receive.Lock);
     Session->PacketFilterContext = Context;
     Session->PacketFilter = Filter;
-    ReleaseSRWLockExclusive(&Session->Receive.Lock);
-    ReleaseSRWLockExclusive(&Session->Send.Lock);
+    LeaveCriticalSection(&Session->Receive.Lock);
+    LeaveCriticalSection(&Session->Send.Lock);
 }
 
 WINTUN_RECEIVE_PACKET_FAST_FUNC WintunReceivePacketFast;
@@ -281,7 +283,7 @@ WintunReceivePacketFast(TUN_SESSION *Session, DWORD *PacketSize, DWORD SpinCycle
         }
     }
 
-    AcquireSRWLockExclusive(&Session->Send.Lock);
+    EnterCriticalSection(&Session->Send.Lock);
 restartRx:
     if (Session->Send.Head >= Session->Capacity)
     {
@@ -306,8 +308,6 @@ restartRx:
         goto cleanup;
     }
     TUN_PACKET *BuffPacket = (TUN_PACKET *)&Session->Descriptor.Send.Ring->Data[Session->Send.Head];
-    _mm_prefetch((const char *)BuffPacket, _MM_HINT_T0);
-    _mm_prefetch((const char *)BuffPacket->Data, _MM_HINT_T0);
     if (BuffPacket->Size > WINTUN_MAX_IP_PACKET_SIZE)
     {
         LastError = ERROR_INVALID_DATA;
@@ -346,10 +346,10 @@ restartRx:
     }
     Session->Stats.PacketsReceived++;
     Session->Stats.BytesReceived += *PacketSize;
-    ReleaseSRWLockExclusive(&Session->Send.Lock);
+    LeaveCriticalSection(&Session->Send.Lock);
     return Packet;
 cleanup:
-    ReleaseSRWLockExclusive(&Session->Send.Lock);
+    LeaveCriticalSection(&Session->Send.Lock);
     SetLastError(LastError);
     return NULL;
 }
@@ -367,7 +367,7 @@ _Use_decl_annotations_
 VOID WINAPI
 WintunReleaseReceivePacket(TUN_SESSION *Session, const BYTE *Packet)
 {
-    AcquireSRWLockExclusive(&Session->Send.Lock);
+    EnterCriticalSection(&Session->Send.Lock);
     TUN_PACKET *ReleasedBuffPacket = (TUN_PACKET *)(Packet - offsetof(TUN_PACKET, Data));
     ReleasedBuffPacket->Size |= TUN_PACKET_RELEASE;
     while (Session->Send.PacketsToRelease)
@@ -380,7 +380,7 @@ WintunReleaseReceivePacket(TUN_SESSION *Session, const BYTE *Packet)
         Session->Send.PacketsToRelease--;
     }
     WriteULongRelease(&Session->Descriptor.Send.Ring->Head, Session->Send.HeadRelease);
-    ReleaseSRWLockExclusive(&Session->Send.Lock);
+    LeaveCriticalSection(&Session->Send.Lock);
 }
 
 WINTUN_ALLOCATE_SEND_PACKET_FUNC WintunAllocateSendPacket;
@@ -394,39 +394,20 @@ WintunAllocateSendPacket(TUN_SESSION *Session, DWORD PacketSize)
         SetLastError(ERROR_INVALID_PARAMETER);
         return NULL;
     }
-    AcquireSRWLockExclusive(&Session->Receive.Lock);
+    EnterCriticalSection(&Session->Receive.Lock);
     if (Session->Receive.Tail >= Session->Capacity)
     {
         LastError = ERROR_HANDLE_EOF;
         goto cleanup;
     }
     const ULONG AlignedPacketSize = TUN_ALIGN(sizeof(TUN_PACKET) + PacketSize);
-    ULONG BuffHead = ReadULongAcquire(&Session->Descriptor.Receive.Ring->Head);
+    const ULONG BuffHead = ReadULongAcquire(&Session->Descriptor.Receive.Ring->Head);
     if (BuffHead >= Session->Capacity)
     {
         LastError = ERROR_HANDLE_EOF;
         goto cleanup;
     }
-    ULONG BuffSpace = TUN_RING_WRAP(BuffHead - Session->Receive.Tail - TUN_ALIGNMENT, Session->Capacity);
-    if (AlignedPacketSize > BuffSpace)
-    {
-        /* Micro-spin to cushion transient burst drops (prevents TCP resets in Netch) */
-        for (DWORD Spin = 0; Spin < 128; ++Spin)
-        {
-            _mm_pause();
-            BuffHead = ReadULongAcquire(&Session->Descriptor.Receive.Ring->Head);
-            if (BuffHead >= Session->Capacity)
-                break;
-            BuffSpace = TUN_RING_WRAP(BuffHead - Session->Receive.Tail - TUN_ALIGNMENT, Session->Capacity);
-            if (AlignedPacketSize <= BuffSpace)
-                break;
-        }
-    }
-    if (BuffHead >= Session->Capacity)
-    {
-        LastError = ERROR_HANDLE_EOF;
-        goto cleanup;
-    }
+    const ULONG BuffSpace = TUN_RING_WRAP(BuffHead - Session->Receive.Tail - TUN_ALIGNMENT, Session->Capacity);
     if (AlignedPacketSize > BuffSpace)
     {
         LastError = ERROR_BUFFER_OVERFLOW;
@@ -435,13 +416,12 @@ WintunAllocateSendPacket(TUN_SESSION *Session, DWORD PacketSize)
     TUN_PACKET *BuffPacket = (TUN_PACKET *)&Session->Descriptor.Receive.Ring->Data[Session->Receive.Tail];
     BuffPacket->Size = PacketSize | TUN_PACKET_RELEASE;
     BYTE *Packet = BuffPacket->Data;
-    _mm_prefetch((const char *)BuffPacket, _MM_HINT_T0);
     Session->Receive.Tail = TUN_RING_WRAP(Session->Receive.Tail + AlignedPacketSize, Session->Capacity);
     Session->Receive.PacketsToRelease++;
-    ReleaseSRWLockExclusive(&Session->Receive.Lock);
+    LeaveCriticalSection(&Session->Receive.Lock);
     return Packet;
 cleanup:
-    ReleaseSRWLockExclusive(&Session->Receive.Lock);
+    LeaveCriticalSection(&Session->Receive.Lock);
     SetLastError(LastError);
     return NULL;
 }
@@ -451,7 +431,7 @@ _Use_decl_annotations_
 VOID WINAPI
 WintunSendPacket(TUN_SESSION *Session, const BYTE *Packet)
 {
-    AcquireSRWLockExclusive(&Session->Receive.Lock);
+    EnterCriticalSection(&Session->Receive.Lock);
     TUN_PACKET *ReleasedBuffPacket = (TUN_PACKET *)(Packet - offsetof(TUN_PACKET, Data));
     ReleasedBuffPacket->Size &= ~TUN_PACKET_RELEASE;
     while (Session->Receive.PacketsToRelease)
@@ -477,16 +457,18 @@ WintunSendPacket(TUN_SESSION *Session, const BYTE *Packet)
             TUN_RING_WRAP(Session->Receive.TailRelease + AlignedPacketSize, Session->Capacity);
         Session->Receive.PacketsToRelease--;
     }
-    BOOL ShouldSignal = FALSE;
     if (Session->Descriptor.Receive.Ring->Tail != Session->Receive.TailRelease)
     {
+        ULONG OldTail = Session->Descriptor.Receive.Ring->Tail;
         WriteULongRelease(&Session->Descriptor.Receive.Ring->Tail, Session->Receive.TailRelease);
         MemoryBarrier();
-        ShouldSignal = TRUE;
+        if (ReadAcquire(&Session->Descriptor.Receive.Ring->Alertable) ||
+            ReadULongAcquire(&Session->Descriptor.Receive.Ring->Head) == OldTail)
+        {
+            SetEvent(Session->Descriptor.Receive.TailMoved);
+        }
     }
-    ReleaseSRWLockExclusive(&Session->Receive.Lock);
-    if (ShouldSignal)
-        SetEvent(Session->Descriptor.Receive.TailMoved);
+    LeaveCriticalSection(&Session->Receive.Lock);
 }
 
 WINTUN_SEND_PACKET_QOS_FUNC WintunSendPacketQoS;
